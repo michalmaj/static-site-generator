@@ -64,3 +64,103 @@ def split_nodes_delimiter(old_nodes, delimiter, text_type):
                 new_nodes.append(TextNode(chunk, text_type))
 
     return new_nodes
+
+
+import re
+from textnode import TextNode, TextType
+
+# Wzorce:
+#  - obrazy:  ![alt](url)
+#  - linki:   [text](url) z wykluczeniem obrazów (! przed '[')
+_IMG_RE  = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+_LINK_RE = re.compile(r'(?<!!)\[([^\]]*)\]\(([^)]+)\)')
+
+
+def split_nodes_image(old_nodes):
+    """
+    Rozbija węzły TEXT po wszystkich obrazach Markdownu: ![alt](url)
+    Z węzłów nie-tekstowych nic nie zdejmuje.
+    """
+    new_nodes = []
+    for node in old_nodes:
+        if node.text_type != TextType.TEXT:
+            new_nodes.append(node)
+            continue
+
+        text = node.text
+        last = 0
+        any_match = False
+
+        for m in _IMG_RE.finditer(text):
+            any_match = True
+            start, end = m.span()
+            alt = m.group(1)
+            url = m.group(2)
+
+            # Tekst przed obrazem (jeśli jest)
+            if start > last:
+                before = text[last:start]
+                if before:
+                    new_nodes.append(TextNode(before, TextType.TEXT))
+
+            # Sam obraz jako TextNode typu IMAGE
+            new_nodes.append(TextNode(alt, TextType.IMAGE, url))
+
+            last = end
+
+        # Ogon po ostatnim dopasowaniu lub cały tekst, jeśli brak dopasowań
+        tail = text[last:]
+        if tail or not any_match:
+            # jeśli nie było dopasowań, zachowujemy oryginalny TEXT
+            if not any_match:
+                new_nodes.append(node)
+            else:
+                if tail:
+                    new_nodes.append(TextNode(tail, TextType.TEXT))
+
+    return new_nodes
+
+
+def split_nodes_link(old_nodes):
+    """
+    Rozbija węzły TEXT po wszystkich linkach Markdownu: [text](url)
+    (obrazy są ignorowane dzięki (?<!!)).
+    Z węzłów nie-tekstowych nic nie zdejmuje.
+    """
+    new_nodes = []
+    for node in old_nodes:
+        if node.text_type != TextType.TEXT:
+            new_nodes.append(node)
+            continue
+
+        text = node.text
+        last = 0
+        any_match = False
+
+        for m in _LINK_RE.finditer(text):
+            any_match = True
+            start, end = m.span()
+            anchor = m.group(1)
+            url = m.group(2)
+
+            # Tekst przed linkiem (jeśli jest)
+            if start > last:
+                before = text[last:start]
+                if before:
+                    new_nodes.append(TextNode(before, TextType.TEXT))
+
+            # Sam link jako TextNode typu LINK
+            new_nodes.append(TextNode(anchor, TextType.LINK, url))
+
+            last = end
+
+        # Ogon po ostatnim dopasowaniu lub cały tekst, jeśli brak dopasowań
+        tail = text[last:]
+        if tail or not any_match:
+            if not any_match:
+                new_nodes.append(node)
+            else:
+                if tail:
+                    new_nodes.append(TextNode(tail, TextType.TEXT))
+
+    return new_nodes
